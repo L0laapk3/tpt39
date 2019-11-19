@@ -1,5 +1,6 @@
-EXE=vector_add
-SRCS=vector_add.cpp
+EXE=matrix_mult
+
+SRCS=*.cpp
 GCC=arm-linux-gnueabihf-g++  
 OCLLIBSDIR=/opt/ComputeLibrary/build/
 OCLINCSDIR=/opt/ComputeLibrary/include/
