@@ -1,6 +1,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <iostream> // for standard I/O
+#include <fstream>
+#include <sstream>
 #include <math.h>
 #include <time.h>
 #include <CL/cl.h>
@@ -23,7 +25,8 @@ void print_clbuild_errors(cl_program program,cl_device_id device)
 	exit(1);
 }
 
-unsigned char ** read_file(const char *name) {
+
+unsigned char ** read_file(const char *name, const unsigned M, const unsigned K, const unsigned N) {
 	size_t size;
 	unsigned char **output=(unsigned char **)malloc(sizeof(unsigned char *));
 	FILE* fp = fopen(name, "rb");
@@ -54,6 +57,27 @@ unsigned char ** read_file(const char *name) {
 	// printf("-------------------------------------------\n");
 	return outputstr;
 }
+
+
+// unsigned char ** read_file(const char *name, const unsigned M, const unsigned K, const unsigned N) {
+
+// 	std::ifstream filestream(name);
+// 	std::stringstream buffer;
+// 	buffer << filestream.rdbuf();
+
+// 	std::string fullOutput  = "#define M " + std::to_string(M) + "\n";
+// 				fullOutput += "#define K " + std::to_string(K) + "\n";
+// 				fullOutput += "#define N " + std::to_string(N) + "\n";
+// 				fullOutput += buffer.str() + "\n";
+
+
+// 	unsigned char **outputstr =(unsigned char **)malloc(sizeof(unsigned char *));
+// 	snprintf((char *)*outputstr, fullOutput.size(), "%s\n", fullOutput.c_str());
+
+// 	printf("%s\n",*outputstr);
+
+// 	return outputstr;
+// }
 void callback(const char *buffer, size_t length, size_t final, void *user_data)
 {
     fwrite(buffer, 1, length, stdout);
@@ -149,6 +173,14 @@ float rand_float() {
 
 int main()
 {
+
+	// M*N = M*K x K*N
+	const unsigned M = 500;
+	const unsigned K = M;
+	const unsigned N = M;
+
+
+
 	char char_buffer[STRING_BUFFER_LEN];
 	cl_platform_id platform;
 	cl_device_id device;
@@ -167,14 +199,7 @@ int main()
 
 
 	//--------------------------------------------------------------------
-	const unsigned N = 50E6;
-	// float *input_a=(float *) malloc(sizeof(float)*N);
-	// float *input_b=(float *) malloc(sizeof(float)*N);
-	// float *output=(float *) malloc(sizeof(float)*N);
-	float *ref_output=(float *) malloc(sizeof(float)*N);
-	// cl_mem input_a_buf; // num_devices elements
-	// cl_mem input_b_buf; // num_devices elements
-	// cl_mem output_buf; // num_devices elements
+	float *ref_output=(float *) malloc(sizeof(float)*M*N);
 	int status;
 
 	clGetPlatformIDs(1, &platform, NULL);
@@ -190,7 +215,7 @@ int main()
 	context = clCreateContext(context_properties, 1, &device, NULL, NULL, NULL);
 	queue = clCreateCommandQueue(context, device, 0, NULL);
 
-	unsigned char **opencl_program=read_file("vector_add.cl");
+	unsigned char **opencl_program=read_file("matrix_mult.cl", M, K, N);
 	program = clCreateProgramWithSource(context, 1, (const char **)opencl_program, NULL, NULL);
 	if (program == NULL) {
 		printf("Program creation failed\n");
@@ -198,18 +223,18 @@ int main()
 	}	
 	int success=clBuildProgram(program, 0, NULL, NULL, NULL, NULL);
 	if(success!=CL_SUCCESS) print_clbuild_errors(program,device);
-	kernel = clCreateKernel(program, "vector_add", NULL);
+	kernel = clCreateKernel(program, "matrix_mult", NULL);
 	
 
 
 	//buffers 
-	cl_mem input_a_buf = clCreateBuffer(context, CL_MEM_ALLOC_HOST_PTR, N* sizeof(float), NULL, &status);
+	cl_mem input_a_buf = clCreateBuffer(context, CL_MEM_ALLOC_HOST_PTR, M*K* sizeof(float), NULL, &status);
     checkError(status, "Failed to create buffer for input A");
 
-    cl_mem input_b_buf = clCreateBuffer(context, CL_MEM_ALLOC_HOST_PTR, N* sizeof(float), NULL, &status);
+    cl_mem input_b_buf = clCreateBuffer(context, CL_MEM_ALLOC_HOST_PTR, K*N* sizeof(float), NULL, &status);
     checkError(status, "Failed to create buffer for input B");
 
-    cl_mem output_buf  = clCreateBuffer(context, CL_MEM_ALLOC_HOST_PTR, N* sizeof(float), NULL, &status);
+    cl_mem output_buf  = clCreateBuffer(context, CL_MEM_ALLOC_HOST_PTR, M*N* sizeof(float), NULL, &status);
     checkError(status, "Failed to create buffer for output");
 
 
@@ -227,10 +252,10 @@ int main()
     //     0, N* sizeof(float), input_b, 0, NULL, &write_event[1]);
     // checkError(status, "Failed to transfer input B");
 	cl_int errcode;
-	float* input_a = (float*)clEnqueueMapBuffer(queue, input_a_buf, CL_TRUE, CL_MAP_WRITE, 0, N * sizeof(float), 0, NULL, &write_event[0], &errcode);
+	float* input_a = (float*)clEnqueueMapBuffer(queue, input_a_buf, CL_TRUE, CL_MAP_WRITE, 0, M*K * sizeof(float), 0, NULL, &write_event[0], &errcode);
 	checkError(errcode, "Failed to map input A");
 
-	float* input_b = (float*)clEnqueueMapBuffer(queue, input_b_buf, CL_TRUE, CL_MAP_WRITE, 0, N * sizeof(float), 0, NULL, &write_event[1], &errcode);
+	float* input_b = (float*)clEnqueueMapBuffer(queue, input_b_buf, CL_TRUE, CL_MAP_WRITE, 0, K*N * sizeof(float), 0, NULL, &write_event[1], &errcode);
 	checkError(errcode, "Failed to map input B");
 
 	
@@ -240,10 +265,11 @@ int main()
 
 	struct timespec start,end;
 	double cputime, gputime;
-	for (unsigned j = 0; j < N; ++j) {
+	for (unsigned j = 0; j < M*K; ++j)
 		input_a[j] = rand_float();
+	for (unsigned j = 0; j < K*N; ++j)
 		input_b[j] = rand_float();
-	}
+
 	clEnqueueUnmapMemObject(queue, input_a_buf, input_a, 0, NULL,NULL);
 	clEnqueueUnmapMemObject(queue, input_b_buf, input_b, 0, NULL,NULL);
 
@@ -261,34 +287,39 @@ int main()
     status = clSetKernelArg(kernel, argi++, sizeof(cl_mem), &output_buf);
     checkError(status, "Failed to set argument 3");
 
-    const size_t global_work_size = N;
+    const size_t global_work_size[] = { N, M };
+	const size_t local_work_size[] = { 16, 16 };
 
     clock_gettime( CLOCK_REALTIME, &start);
-    status = clEnqueueNDRangeKernel(queue, kernel, 1, NULL,
-        &global_work_size, NULL, 2, write_event, &kernel_event);
+    status = clEnqueueNDRangeKernel(queue, kernel, 2, NULL,
+        global_work_size, NULL, 2, write_event, &kernel_event);
 	clWaitForEvents(1, &kernel_event);
    	clock_gettime( CLOCK_REALTIME, &end);
     checkError(status, "Failed to launch kernel");
    	gputime = (double)( end.tv_sec - start.tv_sec ) + (double)( end.tv_nsec - start.tv_nsec ) / BILLION;
 	   
-	float* output  = (float*)clEnqueueMapBuffer(queue, output_buf , CL_TRUE, CL_MAP_READ , 0, N * sizeof(float), 0, NULL, NULL           , &errcode);
+	float* output  = (float*)clEnqueueMapBuffer(queue, output_buf , CL_TRUE, CL_MAP_READ , 0, M*N * sizeof(float), 0, NULL, NULL, &errcode);
 	checkError(errcode, "Failed to map output");
 
 	clock_gettime( CLOCK_REALTIME, &start);
-	for (unsigned j = 0; j < N; ++j) {
-		ref_output[j] = input_a[j] + input_b[j];
-		//printf("ref %f\n",ref_output[j]);
-	}
+	for (unsigned m = 0; m < M; m++)
+		for (unsigned n = 0; n < N; n++) {
+			ref_output[m + n * M] = 0;
+			for (unsigned k = 0; k < K; k++)
+				// ref_output[m + n * M] += input_a[k + n * M] * input_b[m * N + k];			//transposed version
+				ref_output[m + n * M] += input_a[k + n * M] * input_b[m + k * M];		//normal version
+		}
 	clock_gettime( CLOCK_REALTIME, &end);
    	cputime = (double)( end.tv_sec - start.tv_sec ) + (double)( end.tv_nsec - start.tv_nsec ) / BILLION;
 	
-	printf ("N is %01d.\n", N );
+	printf ("M = %01d, K = %01d, N = %01d.\n", M, K, N );
+	printf ("local_work_size = { %01d, %01d }\n", local_work_size[0], local_work_size[1]);
   	printf ("CPU took %.8lf seconds to run.\n", cputime );
    	printf ("GPU took %.8lf seconds to run.\n", gputime );
 	// Verify result.
 	bool pass = true;
 
-	for (unsigned j = 0; j < N && pass; ++j) {
+	for (unsigned j = 0; j < M*N && pass; ++j) {
 		if (fabsf(output[j] - ref_output[j]) > 1.0e-5f) {
 			printf("Failed verification @ index %d		(Output: %f, Reference: %f)\n",
 				j, output[j], ref_output[j]);

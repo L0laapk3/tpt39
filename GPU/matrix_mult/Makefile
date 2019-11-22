@@ -1,6 +1,6 @@
 EXE=matrix_mult
+SRCS=matrix_mult.cpp
 
-SRCS=*.cpp
 GCC=arm-linux-gnueabihf-g++  
 OCLLIBSDIR=/opt/ComputeLibrary/build/
 OCLINCSDIR=/opt/ComputeLibrary/include/

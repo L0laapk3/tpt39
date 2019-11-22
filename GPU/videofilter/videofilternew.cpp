@@ -173,6 +173,7 @@ void generateGaussianKernelFile(Size resolution) {
 	ofstream kernelFile("kernel.h");
 
 	kernelFile << "#define blurIterations " << blurIterations << "\n";
+	kernelFile << "#define borderSize " << borderSize << "\n";
 	kernelFile << "#define W " << resolution.width << "\n";
 	kernelFile << "#define H " << resolution.height << "\n";
 	kernelFile << "#define ksize " << ksize << "\n";
