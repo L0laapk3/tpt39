@@ -329,16 +329,16 @@ int main(int, char**)
 	double tot = 0;
 	int count=0;
     
-	// #define logspeeds
+	#define logspeeds
 	#ifdef logspeeds
 	struct timespec start, end;
 	#endif
 
-	uchar* inoutMap = (uchar*)clEnqueueMapBuffer(queue, inout_buf, CL_TRUE, CL_MAP_WRITE, 0, 3 * bufferSize, 0, NULL, &write_event[0], &errcode);
+	uchar* inOutMap = (uchar*)clEnqueueMapBuffer(queue, inout_buf, CL_TRUE, CL_MAP_WRITE, 0, 3 * bufferSize, 0, NULL, &write_event[0], &errcode);
 	checkError(errcode, "Failed to map input");
 
     while (true) {
-        Mat inputFrame;
+        Mat inputFrame(smallerSize, CV_8UC3, inOutMap);
 		count=count+1;
 		if(count > 299) break;
         camera >> inputFrame;
@@ -355,8 +355,8 @@ int main(int, char**)
 		if (borderSize > 0)
 			copyMakeBorder(inputFrame, inputFrame, borderSize, borderSize, borderSize, borderSize, BORDER_REPLICATE);
 
-		memcpy(inoutMap, inputFrame.data, 3 * bufferSize);
-		clEnqueueUnmapMemObject(queue, inout_buf, inoutMap, 0, NULL,NULL);
+		// memcpy(inOutMap, inputFrame.data, 3 * bufferSize);
+		clEnqueueUnmapMemObject(queue, inout_buf, inOutMap, 0, NULL,NULL);
 
 
 		#ifdef logspeeds
@@ -434,11 +434,11 @@ int main(int, char**)
 
 
 
-		inoutMap  = (uchar*)clEnqueueMapBuffer(queue, inout_buf
+		inOutMap  = (uchar*)clEnqueueMapBuffer(queue, inout_buf
 		, CL_TRUE, CL_MAP_WRITE | CL_MAP_READ, 0, 3 * bufferSize, 0, NULL, NULL, &errcode);
 		checkError(errcode, "Failed to map output");
 
-		Mat outputFrame = Mat(biggerSize.height, biggerSize.width, CV_8UC3, inoutMap);
+		Mat outputFrame = Mat(biggerSize.height, biggerSize.width, CV_8UC3, inOutMap);
 
 		#ifdef logspeeds
 		clock_gettime( CLOCK_REALTIME, &end);
@@ -477,7 +477,7 @@ int main(int, char**)
 	#endif
 	}
 
-	clEnqueueUnmapMemObject(queue, inout_buf, inoutMap, 0, NULL, NULL);
+	clEnqueueUnmapMemObject(queue, inout_buf, inOutMap, 0, NULL, NULL);
 
 	
 	outputVideo.release();
