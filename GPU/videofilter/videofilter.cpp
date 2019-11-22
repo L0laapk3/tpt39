@@ -284,43 +284,29 @@ int main(int, char**)
 	}	
 	int success=clBuildProgram(program, 0, NULL, NULL, NULL, NULL);
 	if(success!=CL_SUCCESS) print_clbuild_errors(program,device);
-	cl_kernel greyKernel = clCreateKernel(program, "toGrey", NULL);
-	cl_kernel gaussianBlurKernel = clCreateKernel(program, "gaussianBlur", NULL);
-	cl_kernel edgeKernel = clCreateKernel(program, "edgeDetect", NULL);
+	cl_kernel kernel = clCreateKernel(program, "videoFilter", NULL);
 	
 	//buffers 
 	cl_mem inout_buf = clCreateBuffer(context, CL_MEM_ALLOC_HOST_PTR, 3 * bufferSize, NULL, &status);
     checkError(status, "Failed to create buffer for in/output");
-    cl_mem tempA_buf  = clCreateBuffer(context, CL_MEM_ALLOC_HOST_PTR, bufferSize, NULL, &status);
-    checkError(status, "Failed to create buffer for temp a");
-    cl_mem tempB_buf  = clCreateBuffer(context, CL_MEM_ALLOC_HOST_PTR, bufferSize, NULL, &status);
-    checkError(status, "Failed to create buffer for temp b");
+
 
 	cl_int errcode;
 
     const size_t global_work_size[] = { (size_t)smallerSize.width, (size_t)smallerSize.height };
-	const size_t local_work_size[] = { 16, 15 };
+	// const size_t local_work_size[] = { 16, 15 };
 
 
 
 
-    status = clSetKernelArg(greyKernel, 0, sizeof(cl_mem), &inout_buf);
-    checkError(status, "Failed to set argument");
-    status = clSetKernelArg(greyKernel, 1, sizeof(cl_mem), &tempA_buf);
+    status = clSetKernelArg(kernel, 0, sizeof(cl_mem), &inout_buf);
     checkError(status, "Failed to set argument");
 
 
-    status = clSetKernelArg(gaussianBlurKernel, 0, sizeof(cl_mem), &tempA_buf);
-    checkError(status, "Failed to set argument");
 
-    status = clSetKernelArg(gaussianBlurKernel, 1, sizeof(cl_mem), &tempB_buf);
-    checkError(status, "Failed to set argument");
-
-
-    status = clSetKernelArg(edgeKernel, 0, sizeof(cl_mem), &tempB_buf);
-    checkError(status, "Failed to set argument");
-
-    status = clSetKernelArg(edgeKernel, 1, sizeof(cl_mem), &inout_buf);
+	cl_mem temp_buf = clCreateBuffer(context, CL_MEM_ALLOC_HOST_PTR, bufferSize, NULL, &status);
+    checkError(status, "Failed to create buffer for in/output");
+    status = clSetKernelArg(kernel, 1, sizeof(cl_mem), &temp_buf);
     checkError(status, "Failed to set argument");
 
 
@@ -329,7 +315,7 @@ int main(int, char**)
 	double tot = 0;
 	int count=0;
     
-	#define logspeeds
+	// #define logspeeds
 	#ifdef logspeeds
 	struct timespec start, end;
 	#endif
@@ -367,64 +353,17 @@ int main(int, char**)
 
 
 
-		status = clEnqueueNDRangeKernel(queue, greyKernel, 2, NULL,
-			global_work_size, local_work_size, 1, write_event, &kernel_event);
+		status = clEnqueueNDRangeKernel(queue, kernel, 2, NULL,
+			global_work_size, NULL, 1, write_event, &kernel_event);
     	checkError(status, "Failed to launch kernel");
 
-		#ifdef logspeeds
-		clWaitForEvents(1, &kernel_event);
-		clock_gettime( CLOCK_REALTIME, &end);
-		cout << "grey   " << (double)( end.tv_sec - start.tv_sec ) + (double)( end.tv_nsec - start.tv_nsec ) / BILLION << "\n";
-		clock_gettime( CLOCK_REALTIME, &start);
-		#endif
-
-		status = clEnqueueNDRangeKernel(queue, gaussianBlurKernel, 2, NULL,
-			global_work_size, local_work_size, 1, write_event, &kernel_event);
-    	checkError(status, "Failed to launch kernel");
-
-		status = clSetKernelArg(gaussianBlurKernel, 0, sizeof(cl_mem), &tempB_buf);
-		checkError(status, "Failed to set argument");
-		status = clSetKernelArg(gaussianBlurKernel, 1, sizeof(cl_mem), &tempA_buf);
-		checkError(status, "Failed to set argument");
-
-		status = clEnqueueNDRangeKernel(queue, gaussianBlurKernel, 2, NULL,
-			global_work_size, local_work_size, 1, write_event, &kernel_event);
-    	checkError(status, "Failed to launch kernel");
-		
-		status = clSetKernelArg(gaussianBlurKernel, 0, sizeof(cl_mem), &tempA_buf);
-		checkError(status, "Failed to set argument");
-		status = clSetKernelArg(gaussianBlurKernel, 1, sizeof(cl_mem), &tempB_buf);
-		checkError(status, "Failed to set argument");
-
-		status = clEnqueueNDRangeKernel(queue, gaussianBlurKernel, 2, NULL,
-			global_work_size, local_work_size, 1, write_event, &kernel_event);
-    	checkError(status, "Failed to launch kernel");
-
-
-
-
-
-		#ifdef logspeeds
-		clWaitForEvents(1, &kernel_event);
-		clock_gettime( CLOCK_REALTIME, &end);
-		cout << "gauss  " << (double)( end.tv_sec - start.tv_sec ) + (double)( end.tv_nsec - start.tv_nsec ) / BILLION << "\n";
-		clock_gettime( CLOCK_REALTIME, &start);
-		#endif
-
-
-
-
-
-		status = clEnqueueNDRangeKernel(queue, edgeKernel, 2, NULL,
-			global_work_size, local_work_size, 1, write_event, &kernel_event);
-    	checkError(status, "Failed to launch kernel");
 
 		clWaitForEvents(1, &kernel_event);
 
 
 		#ifdef logspeeds
 		clock_gettime( CLOCK_REALTIME, &end);
-		cout << "edge   " << (double)( end.tv_sec - start.tv_sec ) + (double)( end.tv_nsec - start.tv_nsec ) / BILLION << "\n";
+		cout << "filter " << (double)( end.tv_sec - start.tv_sec ) + (double)( end.tv_nsec - start.tv_nsec ) / BILLION << "\n";
 		clock_gettime( CLOCK_REALTIME, &start);
 		#endif
 
