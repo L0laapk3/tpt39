@@ -438,11 +438,17 @@ int main(int, char**)
 		, CL_TRUE, CL_MAP_WRITE | CL_MAP_READ, 0, 3 * bufferSize, 0, NULL, NULL, &errcode);
 		checkError(errcode, "Failed to map output");
 
+		#ifdef logspeeds
+		clock_gettime( CLOCK_REALTIME, &end);
+		cout << "out1   " << (double)( end.tv_sec - start.tv_sec ) + (double)( end.tv_nsec - start.tv_nsec ) / BILLION << "\n";
+		clock_gettime( CLOCK_REALTIME, &start);
+		#endif
+
 		Mat outputFrame = Mat(biggerSize.height, biggerSize.width, CV_8UC3, inOutMap);
 
 		#ifdef logspeeds
 		clock_gettime( CLOCK_REALTIME, &end);
-		cout << "output " << (double)( end.tv_sec - start.tv_sec ) + (double)( end.tv_nsec - start.tv_nsec ) / BILLION << "\n";
+		cout << "out2   " << (double)( end.tv_sec - start.tv_sec ) + (double)( end.tv_nsec - start.tv_nsec ) / BILLION << "\n";
 		clock_gettime( CLOCK_REALTIME, &start);
 		#endif
 		

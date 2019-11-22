@@ -149,6 +149,8 @@ void checkError(int status, const char *msg) {
 
 
 
+#define borderSize 0
+
 #define blurIterations 1
 void generateGaussianKernelFile(Size resolution) {
 	unsigned int ksize = 1 + blurIterations * 2;
@@ -174,8 +176,8 @@ void generateGaussianKernelFile(Size resolution) {
 
 	kernelFile << "#define blurIterations " << blurIterations << "\n";
 	kernelFile << "#define borderSize " << borderSize << "\n";
-	kernelFile << "#define W " << resolution.width << "\n";
-	kernelFile << "#define H " << resolution.height << "\n";
+	kernelFile << "#define W " << (resolution.width + 2 * borderSize) << "\n";
+	kernelFile << "#define H " << (resolution.height + 2 * borderSize) << "\n";
 	kernelFile << "#define ksize " << ksize << "\n";
 	//kernelFile << "const static unsigned H = " << resolution.height << ";\n";
 	//kernelFile << "const static unsigned BW = W + 2 * blurIterations;\n";
@@ -206,6 +208,7 @@ void generateGaussianKernelFile(Size resolution) {
 
 
 
+
 int main(int, char**)
 {
 
@@ -219,11 +222,11 @@ int main(int, char**)
     int ex = static_cast<int>(CV_FOURCC('M','J','P','G'));
     Size smallerSize = Size((int) camera.get(CV_CAP_PROP_FRAME_WIDTH),    // Acquire input size
                   (int) camera.get(CV_CAP_PROP_FRAME_HEIGHT));
-	Size biggerSize = Size(smallerSize.width + 2 * blurIterations, smallerSize.height + 2 * blurIterations);
+	Size biggerSize = Size(smallerSize.width + 2 * borderSize, smallerSize.height + 2 * borderSize);
 
 	generateGaussianKernelFile(smallerSize);
 
-	unsigned bufferSize = biggerSize.width * biggerSize.height * 3 * sizeof(char);
+	unsigned bufferSize = biggerSize.width * biggerSize.height * sizeof(char);
 	//Size smallerSize =Size(1280,720);
 	cout << "SIZE:" << smallerSize << endl;
 	
@@ -281,14 +284,17 @@ int main(int, char**)
 	}	
 	int success=clBuildProgram(program, 0, NULL, NULL, NULL, NULL);
 	if(success!=CL_SUCCESS) print_clbuild_errors(program,device);
-	cl_kernel gaussianBlurKernel = clCreateKernel(program, "gaussianBlur", NULL);
 	cl_kernel greyKernel = clCreateKernel(program, "toGrey", NULL);
+	cl_kernel gaussianBlurKernel = clCreateKernel(program, "gaussianBlur", NULL);
+	cl_kernel edgeKernel = clCreateKernel(program, "edgeDetect", NULL);
 	
 	//buffers 
-	cl_mem input_buf = clCreateBuffer(context, CL_MEM_ALLOC_HOST_PTR, bufferSize, NULL, &status);
-    checkError(status, "Failed to create buffer for input");
-    cl_mem output_buf  = clCreateBuffer(context, CL_MEM_ALLOC_HOST_PTR, bufferSize, NULL, &status);
-    checkError(status, "Failed to create buffer for output");
+	cl_mem inout_buf = clCreateBuffer(context, CL_MEM_ALLOC_HOST_PTR, 3 * bufferSize, NULL, &status);
+    checkError(status, "Failed to create buffer for in/output");
+    cl_mem tempA_buf  = clCreateBuffer(context, CL_MEM_ALLOC_HOST_PTR, bufferSize, NULL, &status);
+    checkError(status, "Failed to create buffer for temp a");
+    cl_mem tempB_buf  = clCreateBuffer(context, CL_MEM_ALLOC_HOST_PTR, bufferSize, NULL, &status);
+    checkError(status, "Failed to create buffer for temp b");
 
 	cl_int errcode;
 
@@ -296,15 +302,26 @@ int main(int, char**)
 	const size_t local_work_size[] = { 16, 15 };
 
 
-    status = clSetKernelArg(gaussianBlurKernel, 0, sizeof(cl_mem), &input_buf);
-    checkError(status, "Failed to set input argument");
-
-    status = clSetKernelArg(gaussianBlurKernel, 1, sizeof(cl_mem), &output_buf);
-    checkError(status, "Failed to set output argument");
 
 
-    status = clSetKernelArg(greyKernel, 0, sizeof(cl_mem), &input_buf);
-    checkError(status, "Failed to set input argument");
+    status = clSetKernelArg(greyKernel, 0, sizeof(cl_mem), &inout_buf);
+    checkError(status, "Failed to set argument");
+    status = clSetKernelArg(greyKernel, 1, sizeof(cl_mem), &tempA_buf);
+    checkError(status, "Failed to set argument");
+
+
+    status = clSetKernelArg(gaussianBlurKernel, 0, sizeof(cl_mem), &tempA_buf);
+    checkError(status, "Failed to set argument");
+
+    status = clSetKernelArg(gaussianBlurKernel, 1, sizeof(cl_mem), &tempB_buf);
+    checkError(status, "Failed to set argument");
+
+
+    status = clSetKernelArg(edgeKernel, 0, sizeof(cl_mem), &tempB_buf);
+    checkError(status, "Failed to set argument");
+
+    status = clSetKernelArg(edgeKernel, 1, sizeof(cl_mem), &inout_buf);
+    checkError(status, "Failed to set argument");
 
 
 
@@ -317,8 +334,11 @@ int main(int, char**)
 	struct timespec start, end;
 	#endif
 
+	uchar* inOutMap = (uchar*)clEnqueueMapBuffer(queue, inout_buf, CL_TRUE, CL_MAP_WRITE, 0, 3 * bufferSize, 0, NULL, &write_event[0], &errcode);
+	checkError(errcode, "Failed to map input");
+
     while (true) {
-        Mat inputFrame;
+        Mat inputFrame(smallerSize, CV_8UC3, inOutMap);
 		count=count+1;
 		if(count > 299) break;
         camera >> inputFrame;
@@ -332,12 +352,11 @@ int main(int, char**)
     	// cvtColor(inputFrame, grayframe, CV_BGR2GRAY);
 
 
-		copyMakeBorder(inputFrame, inputFrame, blurIterations, blurIterations, blurIterations, blurIterations, BORDER_REPLICATE);
+		if (borderSize > 0)
+			copyMakeBorder(inputFrame, inputFrame, borderSize, borderSize, borderSize, borderSize, BORDER_REPLICATE);
 
-		float* input = (float*)clEnqueueMapBuffer(queue, input_buf, CL_TRUE, CL_MAP_WRITE, 0, bufferSize, 0, NULL, &write_event[0], &errcode);
-		checkError(errcode, "Failed to map input");
-		memcpy(input, inputFrame.data, bufferSize);
-		clEnqueueUnmapMemObject(queue, input_buf, input, 0, NULL,NULL);
+		// memcpy(inOutMap, inputFrame.data, 3 * bufferSize);
+		clEnqueueUnmapMemObject(queue, inout_buf, inOutMap, 0, NULL,NULL);
 
 
 		#ifdef logspeeds
@@ -363,19 +382,19 @@ int main(int, char**)
 			global_work_size, local_work_size, 1, write_event, &kernel_event);
     	checkError(status, "Failed to launch kernel");
 
-		status = clSetKernelArg(gaussianBlurKernel, 0, sizeof(cl_mem), &output_buf);
-		checkError(status, "Failed to set input argument");
-		status = clSetKernelArg(gaussianBlurKernel, 1, sizeof(cl_mem), &input_buf);
-		checkError(status, "Failed to set output argument");
+		status = clSetKernelArg(gaussianBlurKernel, 0, sizeof(cl_mem), &tempB_buf);
+		checkError(status, "Failed to set argument");
+		status = clSetKernelArg(gaussianBlurKernel, 1, sizeof(cl_mem), &tempA_buf);
+		checkError(status, "Failed to set argument");
 
 		status = clEnqueueNDRangeKernel(queue, gaussianBlurKernel, 2, NULL,
 			global_work_size, local_work_size, 1, write_event, &kernel_event);
     	checkError(status, "Failed to launch kernel");
 		
-		status = clSetKernelArg(gaussianBlurKernel, 0, sizeof(cl_mem), &input_buf);
-		checkError(status, "Failed to set input argument");
-		status = clSetKernelArg(gaussianBlurKernel, 1, sizeof(cl_mem), &output_buf);
-		checkError(status, "Failed to set output argument");
+		status = clSetKernelArg(gaussianBlurKernel, 0, sizeof(cl_mem), &tempA_buf);
+		checkError(status, "Failed to set argument");
+		status = clSetKernelArg(gaussianBlurKernel, 1, sizeof(cl_mem), &tempB_buf);
+		checkError(status, "Failed to set argument");
 
 		status = clEnqueueNDRangeKernel(queue, gaussianBlurKernel, 2, NULL,
 			global_work_size, local_work_size, 1, write_event, &kernel_event);
@@ -383,23 +402,43 @@ int main(int, char**)
 
 
 
+
+
+		#ifdef logspeeds
+		clWaitForEvents(1, &kernel_event);
+		clock_gettime( CLOCK_REALTIME, &end);
+		cout << "gauss  " << (double)( end.tv_sec - start.tv_sec ) + (double)( end.tv_nsec - start.tv_nsec ) / BILLION << "\n";
+		clock_gettime( CLOCK_REALTIME, &start);
+		#endif
+
+
+
+
+
+		status = clEnqueueNDRangeKernel(queue, edgeKernel, 2, NULL,
+			global_work_size, local_work_size, 1, write_event, &kernel_event);
+    	checkError(status, "Failed to launch kernel");
 
 		clWaitForEvents(1, &kernel_event);
 
 
 		#ifdef logspeeds
 		clock_gettime( CLOCK_REALTIME, &end);
-		cout << "gauss  " << (double)( end.tv_sec - start.tv_sec ) + (double)( end.tv_nsec - start.tv_nsec ) / BILLION << "\n";
+		cout << "edge   " << (double)( end.tv_sec - start.tv_sec ) + (double)( end.tv_nsec - start.tv_nsec ) / BILLION << "\n";
 		clock_gettime( CLOCK_REALTIME, &start);
 		#endif
 
-		uchar* output  = (uchar*)clEnqueueMapBuffer(queue, output_buf
-		, CL_TRUE, CL_MAP_READ, 0, bufferSize, 0, NULL, NULL, &errcode);
+
+
+
+
+
+
+		inOutMap  = (uchar*)clEnqueueMapBuffer(queue, inout_buf
+		, CL_TRUE, CL_MAP_WRITE | CL_MAP_READ, 0, 3 * bufferSize, 0, NULL, NULL, &errcode);
 		checkError(errcode, "Failed to map output");
 
-		Mat outputFrame = Mat(biggerSize.height, biggerSize.width, CV_8UC3, output);
-
-		clEnqueueUnmapMemObject(queue, output_buf, output, 0, NULL, NULL);
+		Mat outputFrame = Mat(biggerSize.height, biggerSize.width, CV_8UC3, inOutMap);
 
 		#ifdef logspeeds
 		clock_gettime( CLOCK_REALTIME, &end);
@@ -407,15 +446,16 @@ int main(int, char**)
 		clock_gettime( CLOCK_REALTIME, &start);
 		#endif
 		
-    	memset((unsigned char*)outputFrame.data, 0, outputFrame.step * outputFrame.rows);
-		cv::Rect cropRect;
-		cropRect.x = blurIterations;
-		cropRect.y = blurIterations;
-		cropRect.width = smallerSize.width;
-		cropRect.height = smallerSize.height;
+		if (borderSize > 0) {
+			cv::Rect cropRect;
+			cropRect.x = borderSize;
+			cropRect.y = borderSize;
+			cropRect.width = smallerSize.width;
+			cropRect.height = smallerSize.height;
 
-		outputFrame = outputFrame(cropRect);
-
+			outputFrame = outputFrame(cropRect);
+		}
+    	// memset((uchar*)outputFrame.data, 0, outputFrame.step * outputFrame.rows);
 
 
 
@@ -436,6 +476,8 @@ int main(int, char**)
         imshow(windowName, outputFrame);
 	#endif
 	}
+
+	clEnqueueUnmapMemObject(queue, inout_buf, inOutMap, 0, NULL, NULL);
 
 	
 	outputVideo.release();
