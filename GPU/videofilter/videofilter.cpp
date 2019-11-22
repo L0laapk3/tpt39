@@ -294,7 +294,7 @@ int main(int, char**)
 	cl_int errcode;
 
     const size_t global_work_size[] = { (size_t)smallerSize.width, (size_t)smallerSize.height };
-	const size_t local_work_size[] = { 16, 15 };
+	const size_t local_work_size[] = { 16, 5 };
 
 
 

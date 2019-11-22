@@ -7,20 +7,20 @@
 __kernel void videoFilter(__global uchar *restrict inOut, __global uchar *restrict tempA, __global uchar *restrict tempB)
 {
 
-	unsigned const xmid = get_global_id(0);
-	unsigned const ymid = get_global_id(1) * W;
+	__private unsigned const xmid = get_global_id(0);
+	__private unsigned const ymid = get_global_id(1) * W;
 	
-	unsigned inIndex = (xmid+ymid)*3;
+	__private unsigned inIndex = (xmid+ymid)*3;
 	tempA[xmid+ymid] = ((ushort)inOut[inIndex] + inOut[inIndex+1] + inOut[inIndex+2]) / 3;
 
 
 
 	mem_fence(CLK_GLOBAL_MEM_FENCE);
 
-	unsigned ylow = ymid - W;
-	unsigned yhigh = ymid + W;
-	unsigned xlow = xmid - 1;
-	unsigned xhigh = xmid + 1;
+	__private unsigned ylow = ymid - W;
+	__private unsigned yhigh = ymid + W;
+	__private unsigned xlow = xmid - 1;
+	__private unsigned xhigh = xmid + 1;
 	if (ylow > ymid) 
 		ylow = 0;
 	if (yhigh > (H-1) * (W-1))
@@ -53,13 +53,13 @@ __kernel void videoFilter(__global uchar *restrict inOut, __global uchar *restri
 	mem_fence(CLK_GLOBAL_MEM_FENCE);
 
 
-	short Gx = ((short)tempB[xhigh+ylow] + (short)tempB[xhigh+yhigh] - (short)tempB[xlow+ylow] - (short)tempB[xlow+yhigh]) * 3 + ((short)tempB[xhigh+ymid] - (short)tempB[xlow+ymid]) * 10;
-	short Gy = ((short)tempB[xlow+yhigh] + (short)tempB[xhigh+yhigh] - (short)tempB[xlow+ylow] - (short)tempB[xhigh+ylow]) * 3 + ((short)tempB[xmid+yhigh] - (short)tempB[xmid+ylow]) * 10;
+	__private short Gx = ((short)tempB[xhigh+ylow] + (short)tempB[xhigh+yhigh] - (short)tempB[xlow+ylow] - (short)tempB[xlow+yhigh]) * 3 + ((short)tempB[xhigh+ymid] - (short)tempB[xlow+ymid]) * 10;
+	__private short Gy = ((short)tempB[xlow+yhigh] + (short)tempB[xhigh+yhigh] - (short)tempB[xlow+ylow] - (short)tempB[xhigh+ylow]) * 3 + ((short)tempB[xmid+yhigh] - (short)tempB[xmid+ylow]) * 10;
 
 	Gx = Gx > 0 ? Gx : 0;
 	Gy = Gy > 0 ? Gy : 0;
 
-	unsigned outIndex = (xmid+ymid) * 3;
+	__private unsigned outIndex = (xmid+ymid) * 3;
 	inOut[outIndex] = inOut[outIndex+1] = inOut[outIndex+2] = Gx + Gy > 160 ? 0 : tempB[xmid+ymid];
 }
 
