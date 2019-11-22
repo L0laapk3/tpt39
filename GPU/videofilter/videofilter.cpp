@@ -228,10 +228,10 @@ int main(int, char**)
 
 	unsigned bufferSize = biggerSize.width * biggerSize.height * sizeof(char);
 	//Size smallerSize =Size(1280,720);
-	cout << "SIZE:" << smallerSize << endl;
+	cout << "SIZE:" << smallerSize << "\n";
 	
     VideoWriter outputVideo;                                        // Open the output
-        outputVideo.open(NAME, ex, 25, smallerSize, true);
+	outputVideo.open(NAME, ex, 25, smallerSize, true);
 
     if (!outputVideo.isOpened())
     {
@@ -294,7 +294,7 @@ int main(int, char**)
 	cl_int errcode;
 
     const size_t global_work_size[] = { (size_t)smallerSize.width, (size_t)smallerSize.height };
-	// const size_t local_work_size[] = { 16, 15 };
+	const size_t local_work_size[] = { 16, 15 };
 
 
 
@@ -304,10 +304,15 @@ int main(int, char**)
 
 
 
-	cl_mem temp_buf = clCreateBuffer(context, CL_MEM_ALLOC_HOST_PTR, bufferSize, NULL, &status);
+	cl_mem tempA_buf = clCreateBuffer(context, CL_MEM_ALLOC_HOST_PTR, bufferSize, NULL, &status);
     checkError(status, "Failed to create buffer for in/output");
-    status = clSetKernelArg(kernel, 1, sizeof(cl_mem), &temp_buf);
-    checkError(status, "Failed to set argument");
+    status = clSetKernelArg(kernel, 1, sizeof(cl_mem), &tempA_buf);
+    checkError(status, "Failed to set outputFrameargument");
+
+	cl_mem tempB_buf = clCreateBuffer(context, CL_MEM_ALLOC_HOST_PTR, bufferSize, NULL, &status);
+    checkError(status, "Failed to create buffer for in/output");
+    status = clSetKernelArg(kernel, 2, sizeof(cl_mem), &tempB_buf);
+    checkError(status, "Failed to set outputFrameargument");
 
 
 
@@ -320,11 +325,16 @@ int main(int, char**)
 	struct timespec start, end;
 	#endif
 
-	uchar* inOutMap = (uchar*)clEnqueueMapBuffer(queue, inout_buf, CL_TRUE, CL_MAP_WRITE, 0, 3 * bufferSize, 0, NULL, &write_event[0], &errcode);
-	checkError(errcode, "Failed to map input");
-
     while (true) {
-        Mat inputFrame(smallerSize, CV_8UC3, inOutMap);
+
+		clock_gettime( CLOCK_REALTIME, &bigstart);
+		uchar* inMap = (uchar*)clEnqueueMapBuffer(queue, inout_buf, CL_TRUE, CL_MAP_WRITE, 0, 3 * bufferSize, 0, NULL, &write_event[0], &errcode);
+		checkError(errcode, "Failed to map input");
+
+		clock_gettime( CLOCK_REALTIME, &bigend);
+		tot += (double)( bigend.tv_sec - bigstart.tv_sec ) + (double)( bigend.tv_nsec - bigstart.tv_nsec ) / BILLION;
+
+        Mat inputFrame(smallerSize, CV_8UC3, inMap);
 		count=count+1;
 		if(count > 299) break;
         camera >> inputFrame;
@@ -342,20 +352,20 @@ int main(int, char**)
 			copyMakeBorder(inputFrame, inputFrame, borderSize, borderSize, borderSize, borderSize, BORDER_REPLICATE);
 
 		// memcpy(inOutMap, inputFrame.data, 3 * bufferSize);
-		clEnqueueUnmapMemObject(queue, inout_buf, inOutMap, 0, NULL,NULL);
+		clEnqueueUnmapMemObject(queue, inout_buf, inMap, 0, NULL,NULL);
 
 
 		#ifdef logspeeds
-		clock_gettime( CLOCK_REALTIME, &end);
-		cout << "memcpy " << (double)( end.tv_sec - start.tv_sec ) + (double)( end.tv_nsec - start.tv_nsec ) / BILLION << "\n";
-		clock_gettime( CLOCK_REALTIME, &start);
+		clock_gettime( CLOCK_REALTIME,&end);
+		cout << "memcpy " << (double)(&end.tv_sec - start.tv_sec ) + (double)( end.tv_nsec - start.tv_nsec ) / BILLION << "\n";
+		clock_gettime( CLOCK_REALTIME,&start);
 		#endif
 
 
 
 		status = clEnqueueNDRangeKernel(queue, kernel, 2, NULL,
-			global_work_size, NULL, 1, write_event, &kernel_event);
-    	checkError(status, "Failed to launch kernel");
+			global_work_size, local_work_size, 1,write_event, &kernel_event);
+    	checkError(status, "Failed to outputFrameunch kernel");
 
 
 		clWaitForEvents(1, &kernel_event);
@@ -373,7 +383,7 @@ int main(int, char**)
 
 
 
-		inOutMap  = (uchar*)clEnqueueMapBuffer(queue, inout_buf
+		uchar* outMap  = (uchar*)clEnqueueMapBuffer(queue, inout_buf
 		, CL_TRUE, CL_MAP_WRITE | CL_MAP_READ, 0, 3 * bufferSize, 0, NULL, NULL, &errcode);
 		checkError(errcode, "Failed to map output");
 
@@ -383,7 +393,9 @@ int main(int, char**)
 		clock_gettime( CLOCK_REALTIME, &start);
 		#endif
 
-		Mat outputFrame = Mat(biggerSize.height, biggerSize.width, CV_8UC3, inOutMap);
+		Mat outputFrame = Mat(biggerSize, CV_8UC3, outMap);
+
+		clEnqueueUnmapMemObject(queue, inout_buf, outMap, 0, NULL, NULL);
 
 		#ifdef logspeeds
 		clock_gettime( CLOCK_REALTIME, &end);
@@ -421,8 +433,6 @@ int main(int, char**)
         imshow(windowName, outputFrame);
 	#endif
 	}
-
-	clEnqueueUnmapMemObject(queue, inout_buf, inOutMap, 0, NULL, NULL);
 
 	
 	outputVideo.release();
