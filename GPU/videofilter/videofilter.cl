@@ -23,8 +23,6 @@ __kernel void gaussianBlur(__global const unsigned char *restrict in, __global u
 	unsigned const ymid = (get_global_id(1)+borderSize) * W;
  	// printf("doing w %d h %d.\n", w, h);
 
-	ushort total = 0;
-
 	unsigned ylow = ymid - W;
 	unsigned yhigh = ymid + W;
 	unsigned xlow = xmid - 1;

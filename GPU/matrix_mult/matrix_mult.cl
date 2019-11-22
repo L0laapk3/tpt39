@@ -1,4 +1,4 @@
-#define M 500
+#define M 256
 #define K M
 #define N M
 

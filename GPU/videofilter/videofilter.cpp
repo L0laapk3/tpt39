@@ -485,6 +485,16 @@ int main(int, char**)
 
 	clEnqueueUnmapMemObject(queue, inout_buf, inOutMap, 0, NULL, NULL);
 
+    // clReleaseEvent(write_event[0]);
+    // clReleaseEvent(write_event[1]);
+	// clReleaseKernel(kernel);
+	// clReleaseCommandQueue(queue);
+	// clReleaseMemObject(input_a_buf);
+	// clReleaseMemObject(input_b_buf);
+	// clReleaseMemObject(output_buf);
+	// clReleaseProgram(program);
+	// clReleaseContext(context);
+
 	
 	outputVideo.release();
 	camera.release();

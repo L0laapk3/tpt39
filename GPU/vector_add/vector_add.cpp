@@ -167,7 +167,7 @@ int main()
 
 
 	//--------------------------------------------------------------------
-	const unsigned N = 50E6;
+	const unsigned N = 10E6;
 	// float *input_a=(float *) malloc(sizeof(float)*N);
 	// float *input_b=(float *) malloc(sizeof(float)*N);
 	// float *output=(float *) malloc(sizeof(float)*N);

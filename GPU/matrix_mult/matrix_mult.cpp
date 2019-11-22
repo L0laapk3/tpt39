@@ -175,7 +175,7 @@ int main()
 {
 
 	// M*N = M*K x K*N
-	const unsigned M = 500;
+	const unsigned M = 256;
 	const unsigned K = M;
 	const unsigned N = M;
 
@@ -199,7 +199,6 @@ int main()
 
 
 	//--------------------------------------------------------------------
-	float *ref_output=(float *) malloc(sizeof(float)*M*N);
 	int status;
 
 	clGetPlatformIDs(1, &platform, NULL);
@@ -272,7 +271,7 @@ int main()
 
 	clEnqueueUnmapMemObject(queue, input_a_buf, input_a, 0, NULL,NULL);
 	clEnqueueUnmapMemObject(queue, input_b_buf, input_b, 0, NULL,NULL);
-
+ 
 
 
     // Set kernel arguments.
@@ -292,7 +291,7 @@ int main()
 
     clock_gettime( CLOCK_REALTIME, &start);
     status = clEnqueueNDRangeKernel(queue, kernel, 2, NULL,
-        global_work_size, NULL, 2, write_event, &kernel_event);
+        global_work_size, local_work_size, 2, write_event, &kernel_event);
 	clWaitForEvents(1, &kernel_event);
    	clock_gettime( CLOCK_REALTIME, &end);
     checkError(status, "Failed to launch kernel");
@@ -301,12 +300,13 @@ int main()
 	float* output  = (float*)clEnqueueMapBuffer(queue, output_buf , CL_TRUE, CL_MAP_READ , 0, M*N * sizeof(float), 0, NULL, NULL, &errcode);
 	checkError(errcode, "Failed to map output");
 
+	float *ref_output=(float *) malloc(sizeof(float)*M*N);
 	clock_gettime( CLOCK_REALTIME, &start);
 	for (unsigned m = 0; m < M; m++)
 		for (unsigned n = 0; n < N; n++) {
 			ref_output[m + n * M] = 0;
 			for (unsigned k = 0; k < K; k++)
-				// ref_output[m + n * M] += input_a[k + n * M] * input_b[m * N + k];			//transposed version
+				// ref_output[m + nComputation_time * M] += input_a[k + n * M] * input_b[m * N + k];			//transposed version
 				ref_output[m + n * M] += input_a[k + n * M] * input_b[m + k * M];		//normal version
 		}
 	clock_gettime( CLOCK_REALTIME, &end);
