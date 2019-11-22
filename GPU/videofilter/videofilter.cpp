@@ -329,7 +329,7 @@ int main(int, char**)
 	double tot = 0;
 	int count=0;
     
-	#define logspeeds
+	// #define logspeeds
 	#ifdef logspeeds
 	struct timespec start, end;
 	#endif
